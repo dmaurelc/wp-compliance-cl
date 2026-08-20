@@ -11,7 +11,7 @@ $contracts = array(
 	'plugin information hook'    => "plugins_api",
 	'authenticated download hook' => "upgrader_pre_download",
 	'latest release endpoint'    => "/releases/latest",
-	'checksum asset'             => ".zip.sha256",
+	'checksum asset'             => "'.sha256'",
 	'SHA-256 verification'       => "hash_file( 'sha256'",
 	'external token constant'    => "WPCCL_GITHUB_TOKEN",
 );

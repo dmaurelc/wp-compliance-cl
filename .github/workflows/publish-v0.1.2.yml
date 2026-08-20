@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
   release:
@@ -23,43 +22,40 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate, build and publish release
+      - name: Validate release
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
+          php --version
+          find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
+          php tests/release-metadata.php
+          php tests/schema-contract.php
+          php tests/update-provider-contract.php
+
+      - name: Build and checksum installable ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/wp-compliance-cl
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.gitignore' \
+            --exclude='build' \
+            --exclude='tests' \
+            ./ build/wp-compliance-cl/
           (
-            set -euo pipefail
-            php --version
-            find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
-            php tests/release-metadata.php
-            php tests/schema-contract.php
-            php tests/update-provider-contract.php
+            cd build
+            zip -rq "../${RELEASE_ZIP}" wp-compliance-cl
+          )
+          unzip -t "${RELEASE_ZIP}"
+          sha256sum "${RELEASE_ZIP}" > "${RELEASE_ZIP}.sha256"
 
-            mkdir -p build/wp-compliance-cl
-            rsync -a \
-              --exclude='.git' \
-              --exclude='.github' \
-              --exclude='.gitignore' \
-              --exclude='build' \
-              --exclude='tests' \
-              ./ build/wp-compliance-cl/
-            (
-              cd build
-              zip -rq "../${RELEASE_ZIP}" wp-compliance-cl
-            )
-            unzip -t "${RELEASE_ZIP}"
-            sha256sum "${RELEASE_ZIP}" > "${RELEASE_ZIP}.sha256"
-
-            gh release create "${RELEASE_TAG}" "${RELEASE_ZIP}" "${RELEASE_ZIP}.sha256" \
-              --target "${GITHUB_SHA}" \
-              --title "WP Compliance CL v0.1.2" \
-              --notes "Updates & Distribution: actualizaciones nativas desde GitHub Releases, soporte público/privado y verificación SHA-256 antes de instalar."
-          ) > release-v0.1.2.log 2>&1
-          status=$?
-          cat release-v0.1.2.log
-          if [ "$status" -ne 0 ]; then
-            gh issue create \
-              --title "CI: publicación v0.1.2 fallida" \
-              --body-file release-v0.1.2.log
-            exit "$status"
-          fi
+      - name: Create tag and GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${RELEASE_TAG}" "${RELEASE_ZIP}" "${RELEASE_ZIP}.sha256" \
+            --target "${GITHUB_SHA}" \
+            --title "WP Compliance CL v0.1.2" \
+            --notes "Updates & Distribution: actualizaciones nativas desde GitHub Releases, soporte público/privado y verificación SHA-256 antes de instalar."
