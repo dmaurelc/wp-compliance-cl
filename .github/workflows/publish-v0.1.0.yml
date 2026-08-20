@@ -1,0 +1,48 @@
+name: Publish WP Compliance CL v0.1.0
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-v0.1.0.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.repository == 'dmaurelc/wp-compliance-cl'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v0.1.0
+      RELEASE_ZIP: wp-compliance-cl-0.1.0.zip
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build installable plugin ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/wp-compliance-cl
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='build' \
+            ./ build/wp-compliance-cl/
+          (
+            cd build
+            zip -rq "../${RELEASE_ZIP}" wp-compliance-cl
+          )
+          unzip -t "${RELEASE_ZIP}"
+
+      - name: Create tag and GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${RELEASE_TAG}" "${RELEASE_ZIP}" \
+            --target "${GITHUB_SHA}" \
+            --title "WP Compliance CL v0.1.0" \
+            --notes "Primera versión funcional de WP Compliance CL para apoyar la gestión de privacidad y protección de datos conforme a la Ley 21.719 de Chile. Incluye el plugin instalable para WordPress."
