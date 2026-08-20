@@ -11,6 +11,31 @@ final class Database {
 		return $wpdb->prefix . 'ccl_' . $name;
 	}
 
+	public static function required_tables(): array {
+		return array( 'treatments', 'providers', 'rights', 'right_events', 'consents', 'breaches', 'audit' );
+	}
+
+	public static function exists( string $name ): bool {
+		global $wpdb;
+		$table = self::table( $name );
+		$found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) );
+		return $table === $found;
+	}
+
+	public static function health(): array {
+		$missing = array();
+		foreach ( self::required_tables() as $table ) {
+			if ( ! self::exists( $table ) ) {
+				$missing[] = $table;
+			}
+		}
+
+		return array(
+			'ok'      => empty( $missing ),
+			'missing' => $missing,
+		);
+	}
+
 	public static function install(): void {
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';

@@ -6,13 +6,95 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class Documents {
+	public function existing_privacy_pages(): array {
+		$pages = get_posts(
+			array(
+				'post_type'      => 'page',
+				'post_status'    => array( 'publish', 'draft', 'private' ),
+				'posts_per_page' => 100,
+				'orderby'        => 'title',
+				'order'          => 'ASC',
+			)
+		);
+		$matches = array();
+		$settings = Util::settings();
+		$managed  = array_filter( array_map( 'absint', array( $settings['policy_page_id'], $settings['cookie_page_id'], $settings['rights_page_id'] ) ) );
+
+		foreach ( $pages as $page ) {
+			if ( in_array( (int) $page->ID, $managed, true ) ) {
+				continue;
+			}
+			$haystack = remove_accents( strtolower( $page->post_title . ' ' . $page->post_name ) );
+			if ( false !== strpos( $haystack, 'privacidad' ) || false !== strpos( $haystack, 'proteccion de datos' ) || false !== strpos( $haystack, 'tratamiento de datos' ) || false !== strpos( $haystack, 'privacy' ) ) {
+				$matches[] = $page;
+			}
+		}
+
+		return $matches;
+	}
+
+	public function readiness( string $type ): array {
+		$s = Util::settings();
+		global $wpdb;
+		$missing = array();
+
+		if ( empty( $s['organisation_name'] ) ) {
+			$missing[] = 'Identificar al responsable del tratamiento.';
+		}
+		if ( ! is_email( $s['privacy_email'] ) ) {
+			$missing[] = 'Configurar un email de privacidad válido.';
+		}
+
+		if ( 'policy' === $type ) {
+			$treatments = Database::exists( 'treatments' ) ? $wpdb->get_results( 'SELECT retention FROM ' . Database::table( 'treatments' ) . " WHERE status='active'" ) : array(); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$providers  = Database::exists( 'providers' ) ? (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Database::table( 'providers' ) ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			if ( ! $treatments ) {
+				$missing[] = 'Registrar y revisar al menos un tratamiento de datos.';
+			} else {
+				foreach ( $treatments as $treatment ) {
+					if ( empty( $treatment->retention ) ) {
+						$missing[] = 'Definir retención para todos los tratamientos activos.';
+						break;
+					}
+			}
+			}
+			if ( 0 === $providers ) {
+				$missing[] = 'Revisar y registrar los proveedores/encargados relevantes.';
+			}
+			if ( empty( $s['security_measures'] ) ) {
+				$missing[] = 'Documentar las medidas de seguridad principales.';
+			}
+		}
+
+		if ( 'cookies' === $type && empty( $s['consent_version'] ) ) {
+			$missing[] = 'Definir la versión del aviso de consentimiento.';
+		}
+
+		return array(
+			'ready'   => empty( $missing ),
+			'missing' => array_values( array_unique( $missing ) ),
+		);
+	}
+
+	private function draft_warning( string $type ): string {
+		$readiness = $this->readiness( $type );
+		if ( $readiness['ready'] ) {
+			return '';
+		}
+		$out = '<div class="ccl-generated-document-warning"><p><strong>Borrador pendiente de revisión.</strong> Antes de publicar, completa y valida:</p><ul>';
+		foreach ( $readiness['missing'] as $item ) {
+			$out .= '<li>' . esc_html( $item ) . '</li>';
+		}
+		return $out . '</ul></div>';
+	}
 	public function policy_content(): string {
 		$s = Util::settings();
 		global $wpdb;
-		$treatments = $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'treatments' ) . " WHERE status='active' ORDER BY name ASC" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$providers  = $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'providers' ) . ' ORDER BY name ASC' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$treatments = Database::exists( 'treatments' ) ? $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'treatments' ) . " WHERE status='active' ORDER BY name ASC" ) : array(); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$providers  = Database::exists( 'providers' ) ? $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'providers' ) . ' ORDER BY name ASC' ) : array(); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
-		$out  = '<h2>Política de tratamiento de datos personales</h2>';
+		$out  = $this->draft_warning( 'policy' );
+		$out .= '<h2>Política de tratamiento de datos personales</h2>';
 		$out .= '<p><strong>Responsable:</strong> ' . esc_html( $s['organisation_name'] ) . ( $s['rut'] ? ' — RUT ' . esc_html( $s['rut'] ) : '' ) . '.</p>';
 		$out .= '<p><strong>Contacto de privacidad:</strong> <a href="mailto:' . esc_attr( antispambot( $s['privacy_email'] ) ) . '">' . esc_html( antispambot( $s['privacy_email'] ) ) . '</a>.</p>';
 		if ( $s['address'] ) {
@@ -26,7 +108,7 @@ final class Documents {
 			}
 			$out .= '</ul>';
 		} else {
-			$out .= '<p>No se han registrado tratamientos en WP Compliance CL.</p>';
+			$out .= '<p>El inventario de tratamientos aún está pendiente de completar en WP Compliance CL.</p>';
 		}
 		$out .= '<h3>Destinatarios, encargados y transferencias</h3>';
 		if ( $providers ) {
@@ -36,7 +118,7 @@ final class Documents {
 			}
 			$out .= '</ul>';
 		} else {
-			$out .= '<p>No se han registrado proveedores o encargados en el inventario.</p>';
+			$out .= '<p>La revisión de proveedores y encargados aún está pendiente de completar.</p>';
 		}
 		$out .= '<h3>Derechos de las personas</h3><p>Puedes solicitar acceso, rectificación, supresión, oposición, portabilidad o bloqueo de tus datos mediante nuestro canal de privacidad. Cada solicitud será registrada y gestionada conforme a los plazos legales aplicables.</p>';
 		$out .= '<h3>Seguridad y conservación</h3><p>Aplicamos medidas técnicas y organizativas proporcionales a los riesgos del tratamiento y procuramos conservar los datos únicamente durante el tiempo necesario para las finalidades declaradas o exigencias legales aplicables.</p>';
@@ -47,14 +129,14 @@ final class Documents {
 	}
 
 	public function cookie_content(): string {
-		return '<h2>Preferencias de privacidad y tecnologías de seguimiento</h2><p>Este sitio puede utilizar tecnologías necesarias para su funcionamiento y, cuando estén configuradas, tecnologías funcionales, analíticas o de marketing. Las categorías que utilicen consentimiento como base se mantienen desactivadas hasta que la persona manifieste su elección.</p><p>Puedes modificar o retirar tu elección posteriormente desde el centro de privacidad disponible en el sitio.</p><h3>Categorías</h3><ul><li><strong>Necesarias:</strong> esenciales para funciones básicas y seguridad.</li><li><strong>Funcionales:</strong> mejoran funciones no esenciales.</li><li><strong>Analítica:</strong> medición y comprensión del uso del sitio.</li><li><strong>Marketing:</strong> publicidad, atribución o seguimiento comercial.</li></ul><p><em>Esta descripción debe revisarse contra las tecnologías realmente utilizadas por el sitio.</em></p>';
+		return $this->draft_warning( 'cookies' ) . '<h2>Preferencias de privacidad y tecnologías de seguimiento</h2><p>Este sitio puede utilizar tecnologías necesarias para su funcionamiento y, cuando estén configuradas, tecnologías funcionales, analíticas o de marketing. Las categorías que utilicen consentimiento como base se mantienen desactivadas hasta que la persona manifieste su elección.</p><p>Puedes modificar o retirar tu elección posteriormente desde el centro de privacidad disponible en el sitio.</p><h3>Categorías</h3><ul><li><strong>Necesarias:</strong> esenciales para funciones básicas y seguridad.</li><li><strong>Funcionales:</strong> mejoran funciones no esenciales.</li><li><strong>Analítica:</strong> medición y comprensión del uso del sitio.</li><li><strong>Marketing:</strong> publicidad, atribución o seguimiento comercial.</li></ul>';
 	}
 
 	public function markdown( string $type ): string {
 		$s = Util::settings();
 		global $wpdb;
-		$treatments = $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'treatments' ) . ' ORDER BY name ASC' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$providers  = $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'providers' ) . ' ORDER BY name ASC' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$treatments = Database::exists( 'treatments' ) ? $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'treatments' ) . ' ORDER BY name ASC' ) : array(); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$providers  = Database::exists( 'providers' ) ? $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'providers' ) . ' ORDER BY name ASC' ) : array(); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$disclaimer = "\n\n---\n\n> WP Compliance CL entrega herramientas técnicas de apoyo al cumplimiento. Este documento no constituye asesoría legal ni certificación de cumplimiento.\n";
 
 		if ( 'rat' === $type ) {

@@ -1,0 +1,49 @@
+name: Publish WP Compliance CL v0.1.1
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-v0.1.1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.repository == 'dmaurelc/wp-compliance-cl'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v0.1.1
+      RELEASE_ZIP: wp-compliance-cl-0.1.1.zip
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build installable plugin ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/wp-compliance-cl
+          rsync -a \
+            --exclude='.git' \
+            --exclude='build' \
+            --exclude='.github/workflows/publish-v0.1.0.yml' \
+            --exclude='.github/workflows/publish-v0.1.1.yml' \
+            ./ build/wp-compliance-cl/
+          (
+            cd build
+            zip -rq "../${RELEASE_ZIP}" wp-compliance-cl
+          )
+          unzip -t "${RELEASE_ZIP}"
+
+      - name: Create tag and GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${RELEASE_TAG}" "${RELEASE_ZIP}" \
+            --target "${GITHUB_SHA}" \
+            --title "WP Compliance CL v0.1.1" \
+            --notes "Stability & Foundations: migraciones idempotentes, reparación de esquema, score mejorado, borradores legales seguros y bases para updates/BYOK."

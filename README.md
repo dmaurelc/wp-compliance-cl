@@ -6,13 +6,13 @@ Plugin WordPress orientado a convertir los controles operativos de protección d
 
 ## Estado
 
-**v0.1.0 — functional foundation**
+**v0.1.1 — Stability & Foundations**
 
-Esta versión implementa de punta a punta los módulos base necesarios para instalarla en un WordPress real y comenzar la configuración del cumplimiento.
+Esta release estabiliza la base de datos, mejora la lectura del score, evita publicaciones legales prematuras y prepara las interfaces para el wizard, BYOK y el sistema de actualizaciones de `v0.2.0`.
 
-## Funciones
+## Funciones actuales
 
-- Dashboard con score orientativo y prioridades.
+- Dashboard con score orientativo, prioridades y estados `Completo`, `Pendiente` y `No evaluado`.
 - Inventario de tratamientos, bases de licitud y retención.
 - Flags de alto riesgo y estado EIPD.
 - Proveedores/encargados, DPA y transferencias internacionales.
@@ -25,10 +25,30 @@ Esta versión implementa de punta a punta los módulos base necesarios para inst
 - Integración oportunista con WP Consent API si `wp_set_consent()` está disponible.
 - Bloqueo previo de scripts registrados por `wp_enqueue_script()` mediante reglas `handle=categoria`.
 - Registro de vulneraciones de seguridad.
-- Generación/actualización de páginas públicas.
+- Generación segura de borradores legales y detección de páginas de privacidad existentes.
+- Exportación Markdown de inventario/RAT, DPA, transferencias, plan de brechas y EIPD.
 - Escáner técnico local de plugins, usuarios, contenidos y servicios conocidos.
 - Audit log con hash de integridad.
 - Motor normativo separado en `src/Rules/Chile/Law21719/`.
+- Migraciones automáticas y reparación idempotente del esquema `wp_ccl_*`.
+
+## v0.1.1: migraciones
+
+WP Compliance CL ya no depende exclusivamente del hook de activación para crear o actualizar tablas. En cada carga comprueba:
+
+- `WPCCL_VERSION`
+- `WPCCL_DB_VERSION`
+- tablas obligatorias del esquema
+
+Si falta una tabla o cambia el esquema, `Migrations::maybe_run()` ejecuta `dbDelta()` de forma idempotente y solo marca la migración como completada cuando todas las tablas requeridas existen.
+
+Esto corrige instalaciones donde, por ejemplo, `wp_ccl_treatments` no se hubiera creado correctamente durante una activación anterior.
+
+## Documentos
+
+Las páginas nuevas generadas por el plugin se crean como **borrador**. Una página ya existente conserva su estado cuando se actualiza.
+
+Antes de crear una nueva política, WP Compliance CL intenta detectar páginas de privacidad/protección de datos existentes para reducir duplicados. Los documentos incompletos muestran requisitos pendientes y no deben considerarse listos para publicación.
 
 ## Ejemplo de reglas para scripts
 
@@ -49,12 +69,15 @@ wp-compliance-cl/
 ├── wp-compliance-cl.php
 ├── src/
 │   ├── Admin/
+│   ├── AI/Security/             # interfaz reservada para BYOK v0.2
 │   ├── Core/
 │   ├── Frontend/
-│   └── Rules/Chile/Law21719/
+│   ├── Rules/Chile/Law21719/
+│   └── Updates/                 # contrato de proveedor de updates v0.2
 ├── assets/
 │   ├── css/
 │   └── js/
+├── docs/
 ├── readme.txt
 └── uninstall.php
 ```
@@ -69,9 +92,26 @@ Los registros se **preservan al desinstalar** por defecto para evitar destruir e
 define( 'WPCCL_PURGE_ON_UNINSTALL', true );
 ```
 
+`CCL_PURGE_ON_UNINSTALL` se mantiene como alias compatible con instalaciones 0.1.0.
+
 ## Fuente normativa del pack Chile
 
 El pack mantiene referencias a fuentes oficiales de BCN/Ley Chile y una fecha explícita de revisión. Las instrucciones futuras de la Agencia de Protección de Datos Personales deben incorporarse actualizando el pack sin acoplar cambios al resto del plugin.
+
+## Roadmap
+
+### 0.2.0 — Guided Compliance
+
+- Wizard de configuración inicial.
+- Autogeneración local basada en detecciones y presets.
+- Scanner → propuestas revisables de tratamientos y proveedores.
+- BYOK opcional con almacenamiento cifrado y Privacy Gateway.
+- Proveedores OpenAI, Anthropic, Gemini y OpenAI-compatible.
+- Actualizaciones desde GitHub Releases mediante proveedor desacoplado.
+
+### 0.3.0 — Integrations
+
+Adaptadores avanzados para Bricks, WooCommerce, ACF y plugins de formularios/analítica habituales.
 
 ## Desarrollo
 
@@ -80,7 +120,7 @@ Requisitos:
 - WordPress 6.5+
 - PHP 8.1+
 
-La base no requiere Node, Composer ni compilación para ejecutarse. Esto facilita instalar directamente el ZIP en proyectos de clientes.
+La base no requiere Node, Composer ni compilación para ejecutarse.
 
 ## Origen y atribución
 

@@ -3,7 +3,7 @@
  * Plugin Name:       WP Compliance CL
  * Plugin URI:        https://github.com/dmaurelc/wp-compliance-cl
  * Description:       Herramientas técnicas y organizativas para apoyar el cumplimiento de la Ley 21.719 de protección de datos personales en Chile.
- * Version:           0.1.0
+ * Version:           0.1.1
  * Requires at least: 6.5
  * Requires PHP:      8.1
  * Author:            WP Compliance CL
@@ -17,7 +17,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPCCL_VERSION', '0.1.0' );
+define( 'WPCCL_VERSION', '0.1.1' );
+define( 'WPCCL_DB_VERSION', '2' );
+define( 'WPCCL_LAW_PACK_VERSION', '2026-08-20' );
 define( 'WPCCL_FILE', __FILE__ );
 define( 'WPCCL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPCCL_URL', plugin_dir_url( __FILE__ ) );

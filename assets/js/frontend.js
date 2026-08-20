@@ -1,5 +1,5 @@
 (() => {
-  const cfg = window.WPComplianceCL || {};
+  const cfg = window.ComplianceCL || {};
   const cookieName = 'ccl_consent';
   const idKey = 'ccl_consent_uuid';
 

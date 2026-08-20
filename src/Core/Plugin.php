@@ -21,6 +21,9 @@ final class Plugin {
 	public function boot(): void {
 		load_plugin_textdomain( 'wp-compliance-cl', false, dirname( plugin_basename( WPCCL_FILE ) ) . '/languages' );
 
+		// Self-heal schema changes on normal plugin load; activation alone is not enough for upgrades.
+		Migrations::maybe_run();
+
 		new Consent();
 		new Rights();
 		new Documents();

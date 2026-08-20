@@ -15,3 +15,7 @@ jobs:
           php-version: ${{ matrix.php }}
       - name: Syntax check
         run: find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
+      - name: Release metadata
+        run: php tests/release-metadata.php
+      - name: Schema contract
+        run: php tests/schema-contract.php

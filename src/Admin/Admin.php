@@ -6,6 +6,7 @@ use WPComplianceCL\Core\Database;
 use WPComplianceCL\Core\Documents;
 use WPComplianceCL\Core\Rights;
 use WPComplianceCL\Core\Scanner;
+use WPComplianceCL\Core\Score;
 use WPComplianceCL\Core\Util;
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -58,6 +59,10 @@ final class Admin {
 		echo '<div class="wrap ccl-wrap"><div class="ccl-topbar"><div><div class="ccl-eyebrow">LEY 21.719 · PACK ' . esc_html( $version['pack_version'] ) . '</div><h1>' . esc_html( $title ) . '</h1>';
 		if ( $description ) { echo '<p>' . esc_html( $description ) . '</p>'; }
 		echo '</div><div class="ccl-topbar__meta"><span class="ccl-chip ccl-chip--soft">Vigencia: 01/12/2026</span><span class="ccl-chip">v' . esc_html( WPCCL_VERSION ) . '</span></div></div>';
+		$health = Database::health();
+		if ( ! $health['ok'] ) {
+			echo '<div class="ccl-notice ccl-notice--error"><strong>Esquema de datos incompleto.</strong> No se encontraron: ' . esc_html( implode( ', ', $health['missing'] ) ) . '. WP Compliance CL intentará repararlo automáticamente.</div>';
+		}
 		$this->notice();
 	}
 
@@ -68,24 +73,26 @@ final class Admin {
 	private function notice(): void {
 		if ( empty( $_GET['ccl_notice'] ) ) { return; }
 		$code = sanitize_key( wp_unslash( $_GET['ccl_notice'] ) );
-		$messages = array( 'saved' => 'Cambios guardados.', 'deleted' => 'Registro eliminado.', 'generated' => 'Documento generado/actualizado.', 'scanned' => 'Escaneo completado.', 'responded' => 'Solicitud actualizada.' );
+		$messages = array( 'saved' => 'Cambios guardados.', 'deleted' => 'Registro eliminado.', 'generated' => 'Borrador/documento generado o actualizado.', 'scanned' => 'Escaneo completado.', 'responded' => 'Solicitud actualizada.' );
 		if ( isset( $messages[ $code ] ) ) { echo '<div class="ccl-notice">' . esc_html( $messages[ $code ] ) . '</div>'; }
 	}
 
 	public function dashboard(): void {
 		$this->guard();
 		global $wpdb;
-		$score = $this->score();
-		$rights_open = (int) $wpdb->get_var( "SELECT COUNT(*) FROM " . Database::table( 'rights' ) . " WHERE status NOT IN ('responded','closed','rejected')" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$rights_due = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM " . Database::table( 'rights' ) . " WHERE status NOT IN ('responded','closed','rejected') AND due_at <= %s", gmdate( 'Y-m-d H:i:s', time() + 7 * DAY_IN_SECONDS ) ) );
-		$treatments = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Database::table( 'treatments' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$providers = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Database::table( 'providers' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$breaches = (int) $wpdb->get_var( "SELECT COUNT(*) FROM " . Database::table( 'breaches' ) . " WHERE status='open'" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$consents = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Database::table( 'consents' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$score = ( new Score() )->build();
+		$rights_open = Database::exists( 'rights' ) ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM " . Database::table( 'rights' ) . " WHERE status NOT IN ('responded','closed','rejected')" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$rights_due = Database::exists( 'rights' ) ? (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM " . Database::table( 'rights' ) . " WHERE status NOT IN ('responded','closed','rejected') AND due_at <= %s", gmdate( 'Y-m-d H:i:s', time() + 7 * DAY_IN_SECONDS ) ) ) : 0;
+		$treatments = Database::exists( 'treatments' ) ? (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Database::table( 'treatments' ) ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$providers = Database::exists( 'providers' ) ? (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Database::table( 'providers' ) ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$breaches = Database::exists( 'breaches' ) ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM " . Database::table( 'breaches' ) . " WHERE status='open'" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$consents = Database::exists( 'consents' ) ? (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Database::table( 'consents' ) ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$this->page_start( 'Centro de cumplimiento', 'Una vista operativa de la postura del sitio frente a la Ley 21.719.' );
-		echo '<div class="ccl-hero-grid"><section class="ccl-score-card"><div class="ccl-score-ring" style="--score:' . esc_attr( $score['percent'] ) . '"><div><strong>' . esc_html( $score['percent'] ) . '</strong><span>/100</span></div></div><div><span class="ccl-kicker">Score orientativo</span><h2>' . esc_html( $score['label'] ) . '</h2><p>Basado en controles técnicos y documentación registrada en este WordPress. No representa una certificación legal.</p></div></section>';
-		echo '<section class="ccl-card ccl-next"><div class="ccl-card__head"><div><span class="ccl-kicker">Siguiente prioridad</span><h2>' . esc_html( $score['next']['title'] ) . '</h2></div><span class="ccl-severity ccl-severity--' . esc_attr( $score['next']['severity'] ) . '">' . esc_html( strtoupper( $score['next']['severity'] ) ) . '</span></div><p>' . esc_html( $score['next']['article'] ) . '</p><a class="ccl-button" href="' . esc_url( admin_url( 'admin.php?page=' . $score['next']['page'] ) ) . '">Resolver ahora</a></section></div>';
+		echo '<div class="ccl-hero-grid"><section class="ccl-score-card"><div class="ccl-score-ring" style="--score:' . esc_attr( $score['percent'] ) . '"><div><strong>' . esc_html( $score['percent'] ) . '</strong><span>/100</span></div></div><div><span class="ccl-kicker">Score orientativo</span><h2>' . esc_html( $score['label'] ) . '</h2><p>Basado en controles técnicos y documentación registrada en este WordPress. Los controles no evaluados no suman puntaje.</p><div class="ccl-score-meta"><span><i class="ccl-mini-dot ccl-mini-dot--ok"></i>' . esc_html( $score['complete'] ) . ' completos</span><span><i class="ccl-mini-dot ccl-mini-dot--pending"></i>' . esc_html( $score['pending'] ) . ' pendientes</span><span><i class="ccl-mini-dot ccl-mini-dot--unknown"></i>' . esc_html( $score['unknown'] ) . ' no evaluados</span></div></div></section>';
+		$severity_labels = array( 'high' => 'ALTA', 'medium' => 'MEDIA', 'low' => 'BAJA' );
+		$next_action = 'unknown' === ( $score['next']['state'] ?? '' ) ? 'Evaluar ahora' : 'Resolver ahora';
+		echo '<section class="ccl-card ccl-next"><div class="ccl-card__head"><div><span class="ccl-kicker">Siguiente prioridad</span><h2>' . esc_html( $score['next']['title'] ) . '</h2></div><span class="ccl-severity ccl-severity--' . esc_attr( $score['next']['severity'] ) . '">' . esc_html( $severity_labels[ $score['next']['severity'] ] ?? strtoupper( $score['next']['severity'] ) ) . '</span></div><p>' . esc_html( $score['next']['article'] ) . '</p><a class="ccl-button" href="' . esc_url( admin_url( 'admin.php?page=' . $score['next']['page'] ) ) . '">' . esc_html( $next_action ) . '</a></section></div>';
 
 		echo '<div class="ccl-stats">';
 		$this->stat( 'Tratamientos', $treatments, 'ccl-treatments' );
@@ -101,7 +108,7 @@ final class Admin {
 		}
 		echo '</div></section>';
 
-		$recent = $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'audit' ) . ' ORDER BY id DESC LIMIT 8' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$recent = Database::exists( 'audit' ) ? $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'audit' ) . ' ORDER BY id DESC LIMIT 8' ) : array(); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		echo '<section class="ccl-card"><div class="ccl-card__head"><div><span class="ccl-kicker">Evidencia</span><h2>Actividad reciente</h2></div></div><div class="ccl-timeline">';
 		if ( $recent ) { foreach ( $recent as $row ) { echo '<div><span></span><p><strong>' . esc_html( $row->action ) . '</strong><small>' . esc_html( get_date_from_gmt( $row->created_at, 'd/m/Y H:i' ) ) . '</small></p></div>'; } } else { echo '<div class="ccl-empty">Aún no hay eventos de auditoría.</div>'; }
 		echo '</div></section></div>';
@@ -112,41 +119,6 @@ final class Admin {
 		echo '<a class="ccl-stat" href="' . esc_url( admin_url( 'admin.php?page=' . $page ) ) . '"><span>' . esc_html( $label ) . '</span><strong>' . esc_html( number_format_i18n( $value ) ) . '</strong><small>' . esc_html( $note ?: 'Gestionar' ) . '</small></a>';
 	}
 
-	private function score(): array {
-		global $wpdb;
-		$s = Util::settings();
-		$treatments = $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'treatments' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$providers = $wpdb->get_results( 'SELECT * FROM ' . Database::table( 'providers' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$rights_total = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Database::table( 'rights' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$breaches_total = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Database::table( 'breaches' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$consents = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . Database::table( 'consents' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$policy_ok = ! empty( $s['policy_page_id'] ) && 'publish' === get_post_status( (int) $s['policy_page_id'] );
-		$rights_ok = ! empty( $s['rights_page_id'] ) && 'publish' === get_post_status( (int) $s['rights_page_id'] );
-		$all_retention = ! empty( $treatments ); foreach ( $treatments as $t ) { if ( empty( $t->retention ) ) { $all_retention = false; break; } }
-		$all_dpa = true; foreach ( $providers as $p ) { if ( 'processor' === $p->role && 'signed' !== $p->dpa_status ) { $all_dpa = false; break; } }
-		$transfers_ok = true; foreach ( $providers as $p ) { if ( $p->international_transfer && empty( $p->transfer_mechanism ) ) { $transfers_ok = false; break; } }
-		$high_risk = array_filter( $treatments, static fn( $t ) => $t->sensitive || $t->large_scale || $t->automated_decisions || $t->public_monitoring );
-		$dpia_ok = true; foreach ( $high_risk as $t ) { if ( 'completed' !== $t->dpia_status ) { $dpia_ok = false; break; } }
-		$controls = array(
-			array( 'ok' => ! empty( $s['organisation_name'] ) && is_email( $s['privacy_email'] ), 'id'=>'ORG-01', 'title'=>'Responsable y canal de privacidad identificados', 'article'=>'Arts. 14 ter y 14 quáter', 'severity'=>'high', 'page'=>'ccl-settings' ),
-			array( 'ok' => ! empty( $treatments ), 'id'=>'TRT-01', 'title'=>'Inventario y base de licitud', 'article'=>'Principios y arts. 12-13', 'severity'=>'high', 'page'=>'ccl-treatments' ),
-			array( 'ok' => $all_retention, 'id'=>'MIN-01', 'title'=>'Retención definida', 'article'=>'Minimización / privacidad por defecto', 'severity'=>'medium', 'page'=>'ccl-treatments' ),
-			array( 'ok' => $rights_ok, 'id'=>'DER-01', 'title'=>'Canal de derechos publicado', 'article'=>'Arts. 4 y 11', 'severity'=>'high', 'page'=>'ccl-documents' ),
-			array( 'ok' => $rights_ok || $rights_total > 0, 'id'=>'DER-02', 'title'=>'Workflow de solicitudes operativo', 'article'=>'Art. 11', 'severity'=>'high', 'page'=>'ccl-rights' ),
-			array( 'ok' => empty( $s['consent_enabled'] ) || $consents > 0 || ! empty( $s['consent_version'] ), 'id'=>'CON-01', 'title'=>'Consentimiento versionado y revocable', 'article'=>'Art. 12', 'severity'=>'high', 'page'=>'ccl-consents' ),
-			array( 'ok' => empty( $providers ) || $all_dpa, 'id'=>'ENC-01', 'title'=>'Encargados y DPA documentados', 'article'=>'Art. 15 bis', 'severity'=>'medium', 'page'=>'ccl-providers' ),
-			array( 'ok' => $transfers_ok, 'id'=>'TRF-01', 'title'=>'Transferencias internacionales documentadas', 'article'=>'Régimen de transferencias', 'severity'=>'high', 'page'=>'ccl-providers' ),
-			array( 'ok' => ! empty( $s['security_measures'] ), 'id'=>'SEG-01', 'title'=>'Medidas de seguridad registradas', 'article'=>'Art. 14 quinquies', 'severity'=>'high', 'page'=>'ccl-settings' ),
-			array( 'ok' => ! empty( $s['breach_procedure_ready'] ) || $breaches_total > 0, 'id'=>'BRE-01', 'title'=>'Procedimiento de brechas preparado', 'article'=>'Art. 14 sexies', 'severity'=>'high', 'page'=>'ccl-breaches' ),
-			array( 'ok' => empty( $high_risk ) || $dpia_ok, 'id'=>'EIPD-01', 'title'=>'EIPD para tratamientos de alto riesgo', 'article'=>'Art. 15 ter', 'severity'=>'high', 'page'=>'ccl-treatments' ),
-			array( 'ok' => $policy_ok, 'id'=>'TRA-01', 'title'=>'Política de tratamiento publicada', 'article'=>'Art. 14 ter', 'severity'=>'medium', 'page'=>'ccl-documents' ),
-		);
-		$ok = 0; foreach ( $controls as &$c ) { $c['state'] = $c['ok'] ? 'ok' : 'pending'; $c['state_label'] = $c['ok'] ? 'Completo' : 'Pendiente'; if ( $c['ok'] ) { $ok++; } } unset( $c );
-		$percent = (int) round( ( $ok / count( $controls ) ) * 100 );
-		$next = null; foreach ( $controls as $c ) { if ( ! $c['ok'] && 'high' === $c['severity'] ) { $next = $c; break; } } if ( ! $next ) { foreach ( $controls as $c ) { if ( ! $c['ok'] ) { $next = $c; break; } } } if ( ! $next ) { $next = array( 'title'=>'Mantener revisión periódica', 'article'=>'Todos los controles configurados.', 'severity'=>'low', 'page'=>'ccl-scanner' ); }
-		$label = $percent >= 85 ? 'Postura sólida' : ( $percent >= 60 ? 'En progreso' : 'Requiere trabajo' );
-		return compact( 'percent', 'controls', 'next', 'label' );
-	}
 
 	public function settings(): void {
 		$this->guard(); $s = Util::settings(); $this->page_start( 'Configuración', 'Datos del responsable, seguridad y comportamiento del módulo de consentimiento.' );
@@ -212,12 +184,122 @@ final class Admin {
 	public function save_breach(): void { $this->guard(); check_admin_referer('ccl_save_breach'); global $wpdb; $id=absint($_POST['id']??0); $now=Util::now_mysql(); $local=sanitize_text_field(wp_unslash($_POST['detected_at']??'')); $detected=gmdate('Y-m-d H:i:s',strtotime($local.' '.wp_timezone_string())); $data=array('title'=>sanitize_text_field(wp_unslash($_POST['title']??'')),'detected_at'=>$detected,'nature'=>sanitize_textarea_field(wp_unslash($_POST['nature']??'')),'data_categories'=>sanitize_textarea_field(wp_unslash($_POST['data_categories']??'')),'affected_estimate'=>absint($_POST['affected_estimate']??0),'effects'=>sanitize_textarea_field(wp_unslash($_POST['effects']??'')),'risk_level'=>sanitize_key(wp_unslash($_POST['risk_level']??'pending')),'measures'=>sanitize_textarea_field(wp_unslash($_POST['measures']??'')),'notified_agency'=>!empty($_POST['notified_agency'])?1:0,'notified_subjects'=>!empty($_POST['notified_subjects'])?1:0,'evidence'=>sanitize_textarea_field(wp_unslash($_POST['evidence']??'')),'status'=>'open','updated_at'=>$now); if($id){$wpdb->update(Database::table('breaches'),$data,array('id'=>$id));}else{$data['created_at']=$now;$wpdb->insert(Database::table('breaches'),$data);$id=(int)$wpdb->insert_id;} Audit::log('breach_saved','breach',(string)$id); $this->redirect('ccl-breaches','saved'); }
 	public function delete_breach(): void { $this->guard(); $id=absint($_GET['id']??0); check_admin_referer('ccl_delete_breach_'.$id); global $wpdb; $wpdb->delete(Database::table('breaches'),array('id'=>$id),array('%d')); Audit::log('breach_deleted','breach',(string)$id); $this->redirect('ccl-breaches','deleted'); }
 
-	public function documents(): void { $this->guard(); $s=Util::settings(); $this->page_start('Documentos y páginas','Genera borradores operativos desde la configuración e inventario actuales.'); echo '<div class="ccl-doc-grid">'; $this->doc_card('policy','Política de tratamiento / privacidad','Art. 14 ter','Genera o actualiza una página pública con responsable, tratamientos, proveedores, derechos y versionado.',(int)$s['policy_page_id']); $this->doc_card('cookies','Política de tecnologías y preferencias','Consentimiento / transparencia','Explica categorías y enlaza conceptualmente con el centro de privacidad.',(int)$s['cookie_page_id']); $this->doc_card('rights','Canal de derechos','Arts. 4 y 11','Crea una página con el formulario público ARCO+ y referencia de expediente.',(int)$s['rights_page_id']); echo '</div><div class="ccl-doc-grid">'; $this->download_card('rat','Inventario / RAT','Inventario interno','Exporta los tratamientos registrados en Markdown.'); $this->download_card('dpa','Modelo DPA','Art. 15 bis','Borrador operativo para acuerdos con encargados.'); $this->download_card('transfers','Anexo de transferencias','Transferencias internacionales','Consolida proveedores y mecanismos registrados.'); $this->download_card('breach-plan','Plan de respuesta a brechas','Art. 14 sexies','Runbook interno sin asumir un plazo fijo de 72 horas.'); $this->download_card('dpia','Evaluación preliminar EIPD','Art. 15 ter','Consolida tratamientos con factores de alto riesgo.'); echo '</div>'; if($s['policy_page_id']){echo '<section class="ccl-card"><span class="ccl-kicker">Vista previa</span><h2>Política generada</h2><div class="ccl-document-preview">'.wp_kses_post((new Documents())->policy_content()).'</div></section>';} $this->page_end(); }
-	private function doc_card(string $type,string $title,string $article,string $desc,int $page_id): void { echo '<section class="ccl-card ccl-doc"><span class="ccl-kicker">'.esc_html($article).'</span><h2>'.esc_html($title).'</h2><p>'.esc_html($desc).'</p>'; if($page_id&&get_post($page_id)){echo '<div class="ccl-doc__status"><span class="ccl-status-dot ccl-status-dot--ok"></span> Página #'.esc_html($page_id).'</div><a class="ccl-button" target="_blank" rel="noopener" href="'.esc_url(get_permalink($page_id)).'">Ver página</a> ';} echo '<a class="ccl-button ccl-button--primary" href="'.esc_url(wp_nonce_url(admin_url('admin-post.php?action=ccl_generate_document&type='.$type),'ccl_generate_document_'.$type)).'">'.($page_id?'Actualizar':'Generar').'</a></section>'; }
-	private function download_card(string $type,string $title,string $article,string $desc): void { echo '<section class="ccl-card ccl-doc"><span class="ccl-kicker">'.esc_html($article).'</span><h2>'.esc_html($title).'</h2><p>'.esc_html($desc).'</p><a class="ccl-button ccl-button--primary" href="'.esc_url(wp_nonce_url(admin_url('admin-post.php?action=ccl_download_document&type='.$type),'ccl_download_document_'.$type)).'">Descargar Markdown</a></section>'; }
-	public function generate_document(): void { $this->guard(); $type=sanitize_key($_GET['type']??''); check_admin_referer('ccl_generate_document_'.$type); $docs=new Documents(); $s=Util::settings(); if('policy'===$type){$title='Política de tratamiento de datos personales';$content=$docs->policy_content();$key='policy_page_id';}elseif('cookies'===$type){$title='Preferencias de privacidad y tecnologías';$content=$docs->cookie_content().'[compliance_cl_privacy_center]';$key='cookie_page_id';}elseif('rights'===$type){$title='Ejercicio de derechos sobre datos personales';$content='<p>Utiliza este canal para ejercer tus derechos de acceso, rectificación, supresión, oposición, portabilidad o bloqueo.</p>[compliance_cl_rights_form]';$key='rights_page_id';}else{wp_die('Documento inválido');} $id=absint($s[$key]??0); $post=array('post_title'=>$title,'post_content'=>$content,'post_status'=>'publish','post_type'=>'page'); if($id&&get_post($id)){$post['ID']=$id;$result=wp_update_post(wp_slash($post),true);}else{$result=wp_insert_post(wp_slash($post),true);} if(is_wp_error($result)){wp_die(esc_html($result->get_error_message()));} $s[$key]=(int)$result; update_option('ccl_settings',$s,false); Audit::log('document_generated','page',(string)$result,array('type'=>$type)); $this->redirect('ccl-documents','generated'); }
+	public function documents(): void {
+		$this->guard();
+		$s    = Util::settings();
+		$docs = new Documents();
+		$this->page_start( 'Documentos y páginas', 'Genera borradores operativos desde la configuración e inventario actuales.' );
 
-	public function download_document(): void { $this->guard(); $type=sanitize_key($_GET['type']??''); $allowed=array('rat','dpa','transfers','breach-plan','dpia'); if(!in_array($type,$allowed,true)){wp_die('Documento inválido');} check_admin_referer('ccl_download_document_'.$type); $content=(new Documents())->markdown($type); Audit::log('document_downloaded','document',$type); nocache_headers(); header('Content-Type: text/markdown; charset=utf-8'); header('Content-Disposition: attachment; filename="wp-compliance-cl-'.$type.'-'.gmdate('Y-m-d').'.md"'); echo $content; exit; }
+		$existing = $docs->existing_privacy_pages();
+		if ( $existing ) {
+			echo '<section class="ccl-card ccl-alert-card"><span class="ccl-kicker">Evitar duplicados</span><h2>Ya existe contenido legal relacionado con privacidad</h2><p>WP Compliance CL no lo reemplazará automáticamente. Revisa estas páginas antes de crear otra política:</p><div class="ccl-existing-pages">';
+			foreach ( $existing as $page ) {
+				echo '<a href="' . esc_url( get_edit_post_link( $page->ID ) ) . '"><strong>' . esc_html( $page->post_title ) . '</strong><small>' . esc_html( ucfirst( $page->post_status ) ) . ' · #' . esc_html( $page->ID ) . '</small></a>';
+			}
+			echo '</div></section>';
+		}
+
+		echo '<div class="ccl-doc-grid">';
+		$this->doc_card( 'policy', 'Política de tratamiento / privacidad', 'Art. 14 ter', 'Genera o actualiza una página con responsable, tratamientos, proveedores, derechos y versionado.', (int) $s['policy_page_id'], $docs->readiness( 'policy' ), ! empty( $existing ) );
+		$this->doc_card( 'cookies', 'Política de tecnologías y preferencias', 'Consentimiento / transparencia', 'Explica categorías y enlaza con el centro de privacidad.', (int) $s['cookie_page_id'], $docs->readiness( 'cookies' ) );
+		$this->doc_card( 'rights', 'Canal de derechos', 'Arts. 4 y 11', 'Crea una página con el formulario público ARCO+ y referencia de expediente.', (int) $s['rights_page_id'], $docs->readiness( 'rights' ) );
+		echo '</div><div class="ccl-doc-grid">';
+		$this->download_card( 'rat', 'Inventario / RAT', 'Inventario interno', 'Exporta los tratamientos registrados en Markdown.' );
+		$this->download_card( 'dpa', 'Modelo DPA', 'Art. 15 bis', 'Borrador operativo para acuerdos con encargados.' );
+		$this->download_card( 'transfers', 'Anexo de transferencias', 'Transferencias internacionales', 'Consolida proveedores y mecanismos registrados.' );
+		$this->download_card( 'breach-plan', 'Plan de respuesta a brechas', 'Art. 14 sexies', 'Runbook interno sin asumir un plazo fijo de 72 horas.' );
+		$this->download_card( 'dpia', 'Evaluación preliminar EIPD', 'Art. 15 ter', 'Consolida tratamientos con factores de alto riesgo.' );
+		echo '</div>';
+
+		if ( $s['policy_page_id'] ) {
+			echo '<section class="ccl-card"><span class="ccl-kicker">Vista previa</span><h2>Política generada</h2><div class="ccl-document-preview">' . wp_kses_post( $docs->policy_content() ) . '</div></section>';
+		}
+		$this->page_end();
+	}
+
+	private function doc_card( string $type, string $title, string $article, string $desc, int $page_id, array $readiness, bool $privacy_conflict = false ): void {
+		echo '<section class="ccl-card ccl-doc"><span class="ccl-kicker">' . esc_html( $article ) . '</span><h2>' . esc_html( $title ) . '</h2><p>' . esc_html( $desc ) . '</p>';
+
+		if ( $page_id && get_post( $page_id ) ) {
+			$status = get_post_status( $page_id );
+			echo '<div class="ccl-doc__status"><span class="ccl-status-dot ccl-status-dot--ok"></span> Página #' . esc_html( $page_id ) . ' · ' . esc_html( ucfirst( (string) $status ) ) . '</div><a class="ccl-button" target="_blank" rel="noopener" href="' . esc_url( get_permalink( $page_id ) ) . '">Ver página</a> ';
+		}
+
+		if ( ! $readiness['ready'] ) {
+			echo '<div class="ccl-readiness"><strong>Antes de publicar:</strong><ul>';
+			foreach ( $readiness['missing'] as $item ) {
+				echo '<li>' . esc_html( $item ) . '</li>';
+			}
+			echo '</ul></div>';
+		}
+
+		$args = 'admin-post.php?action=ccl_generate_document&type=' . rawurlencode( $type );
+		$label = $page_id ? 'Actualizar contenido' : 'Generar borrador';
+		if ( $privacy_conflict && ! $page_id && 'policy' === $type ) {
+			$args .= '&force=1';
+			$label = 'Crear borrador igualmente';
+			echo '<p class="ccl-help">Se detectó otra página de privacidad. Esta acción crea una nueva solo porque tú lo confirmas explícitamente.</p>';
+		}
+		echo '<a class="ccl-button ccl-button--primary" href="' . esc_url( wp_nonce_url( admin_url( $args ), 'ccl_generate_document_' . $type ) ) . '">' . esc_html( $label ) . '</a></section>';
+	}
+
+	private function download_card( string $type, string $title, string $article, string $desc ): void {
+		echo '<section class="ccl-card ccl-doc"><span class="ccl-kicker">' . esc_html( $article ) . '</span><h2>' . esc_html( $title ) . '</h2><p>' . esc_html( $desc ) . '</p><a class="ccl-button ccl-button--primary" href="' . esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=ccl_download_document&type=' . $type ), 'ccl_download_document_' . $type ) ) . '">Descargar Markdown</a></section>';
+	}
+
+	public function generate_document(): void {
+		$this->guard();
+		$type  = sanitize_key( $_GET['type'] ?? '' );
+		$force = ! empty( $_GET['force'] );
+		check_admin_referer( 'ccl_generate_document_' . $type );
+
+		$docs = new Documents();
+		$s    = Util::settings();
+		if ( 'policy' === $type ) {
+			$title   = 'Política de tratamiento de datos personales';
+			$content = $docs->policy_content();
+			$key     = 'policy_page_id';
+		} elseif ( 'cookies' === $type ) {
+			$title   = 'Preferencias de privacidad y tecnologías';
+			$content = $docs->cookie_content() . '[compliance_cl_privacy_center]';
+			$key     = 'cookie_page_id';
+		} elseif ( 'rights' === $type ) {
+			$title   = 'Ejercicio de derechos sobre datos personales';
+			$content = '<p>Utiliza este canal para ejercer tus derechos de acceso, rectificación, supresión, oposición, portabilidad o bloqueo.</p>[compliance_cl_rights_form]';
+			$key     = 'rights_page_id';
+		} else {
+			wp_die( esc_html__( 'Documento inválido.', 'wp-compliance-cl' ) );
+		}
+
+		$id = absint( $s[ $key ] ?? 0 );
+		if ( 'policy' === $type && ! $id && ! $force && $docs->existing_privacy_pages() ) {
+			wp_die( esc_html__( 'Ya existe una página relacionada con privacidad. Revísala desde Documentos o confirma explícitamente la creación de un nuevo borrador.', 'wp-compliance-cl' ) );
+		}
+
+		$post = array(
+			'post_title'   => $title,
+			'post_content' => $content,
+			'post_status'  => 'draft',
+			'post_type'    => 'page',
+		);
+		if ( $id && get_post( $id ) ) {
+			$post['ID']          = $id;
+			$post['post_status'] = get_post_status( $id ) ?: 'draft';
+			$result = wp_update_post( wp_slash( $post ), true );
+		} else {
+			$result = wp_insert_post( wp_slash( $post ), true );
+		}
+		if ( is_wp_error( $result ) ) {
+			wp_die( esc_html( $result->get_error_message() ) );
+		}
+
+		$s[ $key ] = (int) $result;
+		update_option( 'ccl_settings', $s, false );
+		Audit::log( 'document_generated', 'page', (string) $result, array( 'type' => $type, 'status' => get_post_status( $result ) ) );
+		$this->redirect( 'ccl-documents', 'generated' );
+	}
+
+	public function download_document(): void { $this->guard(); $type=sanitize_key($_GET['type']??''); $allowed=array('rat','dpa','transfers','breach-plan','dpia'); if(!in_array($type,$allowed,true)){wp_die('Documento inválido');} check_admin_referer('ccl_download_document_'.$type); $content=(new Documents())->markdown($type); Audit::log('document_downloaded','document',$type); nocache_headers(); header('Content-Type: text/markdown; charset=utf-8'); header('Content-Disposition: attachment; filename="compliance-cl-'.$type.'-'.gmdate('Y-m-d').'.md"'); echo $content; exit; }
 
 	public function scanner(): void { $this->guard(); $this->page_start('Escáner de datos y servicios','Detección técnica local. Los hallazgos requieren revisión humana y no constituyen conclusiones jurídicas.'); echo '<div class="ccl-toolbar"><a class="ccl-button ccl-button--primary" href="'.esc_url(wp_nonce_url(admin_url('admin-post.php?action=ccl_run_scan'),'ccl_run_scan')).'">Ejecutar escaneo</a></div>'; $data=get_transient('ccl_scan_results_'.get_current_user_id()); if(!$data){echo '<section class="ccl-card ccl-empty">Ejecuta el escáner para revisar plugins, tema, usuarios y referencias a servicios externos.</section>';}else{echo '<div class="ccl-scan-grid">'; foreach($data as $f){echo '<section class="ccl-card ccl-finding"><div><span class="ccl-chip ccl-chip--soft">'.esc_html($f['type']).'</span><h3>'.esc_html($f['name']).'</h3><p>'.esc_html($f['detail']).'</p></div><code>'.esc_html($f['evidence']).'</code></section>'; } echo '</div>';} $this->page_end(); }
 	public function run_scan(): void { $this->guard(); check_admin_referer('ccl_run_scan'); $data=(new Scanner())->run(); set_transient('ccl_scan_results_'.get_current_user_id(),$data,HOUR_IN_SECONDS); Audit::log('scanner_run','scanner','',array('findings'=>count($data))); $this->redirect('ccl-scanner','scanned'); }

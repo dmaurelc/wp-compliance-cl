@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class Activator {
 	public static function activate(): void {
-		Database::install();
+		Migrations::run();
 
 		if ( false === get_option( 'ccl_settings', false ) ) {
 			add_option(
@@ -36,7 +36,8 @@ final class Activator {
 		}
 
 		update_option( 'ccl_version', WPCCL_VERSION, false );
-		update_option( 'ccl_law_pack_version', '2026-08-20', false );
+		update_option( 'ccl_db_version', WPCCL_DB_VERSION, false );
+		update_option( 'ccl_law_pack_version', WPCCL_LAW_PACK_VERSION, false );
 	}
 
 	public static function deactivate(): void {
