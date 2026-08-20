@@ -6,9 +6,9 @@ Plugin WordPress orientado a convertir los controles operativos de protección d
 
 ## Estado
 
-**v0.1.1 — Stability & Foundations**
+**v0.1.2 — Updates & Distribution**
 
-Esta release estabiliza la base de datos, mejora la lectura del score, evita publicaciones legales prematuras y prepara las interfaces para el wizard, BYOK y el sistema de actualizaciones de `v0.2.0`.
+Esta release activa el proveedor desacoplado de actualizaciones, integra GitHub Releases con la interfaz nativa de WordPress y verifica cada paquete mediante SHA-256.
 
 ## Funciones actuales
 
@@ -31,6 +31,19 @@ Esta release estabiliza la base de datos, mejora la lectura del score, evita pub
 - Audit log con hash de integridad.
 - Motor normativo separado en `src/Rules/Chile/Law21719/`.
 - Migraciones automáticas y reparación idempotente del esquema `wp_ccl_*`.
+- Actualizaciones nativas desde GitHub Releases con verificación SHA-256.
+
+## Actualizaciones desde GitHub
+
+El proveedor consulta el último release estable y utiliza exclusivamente el asset con nombre `wp-compliance-cl-{version}.zip` acompañado por `wp-compliance-cl-{version}.zip.sha256`.
+
+Los repositorios públicos funcionan sin configuración adicional. Mientras el repositorio sea privado, crea un token fine-grained con permiso de solo lectura para **Contents** y defínelo fuera del plugin:
+
+```php
+define( 'WPCCL_GITHUB_TOKEN', 'github_pat_...' );
+```
+
+No guardes el token en el repositorio, el ZIP, las opciones de WordPress ni los registros. Esta instalación manual de `v0.1.2` habilita las actualizaciones automáticas para versiones posteriores.
 
 ## v0.1.1: migraciones
 
@@ -73,7 +86,7 @@ wp-compliance-cl/
 │   ├── Core/
 │   ├── Frontend/
 │   ├── Rules/Chile/Law21719/
-│   └── Updates/                 # contrato de proveedor de updates v0.2
+│   └── Updates/                 # proveedor desacoplado de GitHub Releases
 ├── assets/
 │   ├── css/
 │   └── js/
@@ -107,7 +120,6 @@ El pack mantiene referencias a fuentes oficiales de BCN/Ley Chile y una fecha ex
 - Scanner → propuestas revisables de tratamientos y proveedores.
 - BYOK opcional con almacenamiento cifrado y Privacy Gateway.
 - Proveedores OpenAI, Anthropic, Gemini y OpenAI-compatible.
-- Actualizaciones desde GitHub Releases mediante proveedor desacoplado.
 
 ### 0.3.0 — Integrations
 

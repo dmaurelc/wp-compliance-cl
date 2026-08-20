@@ -6,8 +6,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Contract reserved for v0.2 update providers (GitHub Releases first,
- * self-hosted update service later) without coupling WordPress UI to a source.
+ * Contract for update providers without coupling the WordPress UI to a source.
+ * GitHub Releases is the default provider from v0.1.2 onward.
  */
 interface UpdateProviderInterface {
 	public function boot(): void;

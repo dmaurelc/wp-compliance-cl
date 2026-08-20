@@ -10,8 +10,8 @@ WP Compliance CL se divide en capas desacopladas:
 - `Admin/`: Compliance Hub y workflows administrativos.
 - `Frontend/`: banner, centro de privacidad y canal de derechos.
 - `Rules/Chile/Law21719/`: pack normativo versionado y desacoplado.
-- `Updates/`: contrato para proveedores de actualización. GitHub Releases se implementará en `v0.2.0`.
-- `AI/Security/`: frontera de seguridad para el futuro BYOK cifrado; no contiene credenciales ni implementación de proveedor en `v0.1.1`.
+- `Updates/`: contrato y proveedor de GitHub Releases, con soporte público/privado y verificación SHA-256.
+- `AI/Security/`: frontera de seguridad para el futuro BYOK cifrado; todavía no contiene credenciales ni una implementación de proveedor.
 
 ## Versiones independientes
 
@@ -38,6 +38,17 @@ La migración se considera completa únicamente si `Database::health()` confirma
 - `wp_ccl_audit`
 
 Los registros de consentimiento y auditoría se diseñan como eventos append-only. Los objetos operativos editables —tratamientos, proveedores y vulneraciones— mantienen fecha de creación/actualización.
+
+## Actualizaciones
+
+`GitHubReleaseProvider` implementa `UpdateProviderInterface` y se integra con el encabezado `Update URI` de WordPress. La consulta de metadata se almacena temporalmente durante seis horas y no expone credenciales.
+
+Cada release debe incluir dos assets con nombres exactos:
+
+- `wp-compliance-cl-{version}.zip`
+- `wp-compliance-cl-{version}.zip.sha256`
+
+El proveedor descarga el paquete mediante `upgrader_pre_download` y comprueba SHA-256 antes de permitir que `WP_Upgrader` lo instale. Para repositorios privados, `WPCCL_GITHUB_TOKEN` se define fuera del plugin y solo necesita acceso `Contents: read`.
 
 ## Extensión
 

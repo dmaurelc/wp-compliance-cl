@@ -3,6 +3,7 @@ namespace WPComplianceCL\Core;
 
 use WPComplianceCL\Admin\Admin;
 use WPComplianceCL\Frontend\Frontend;
+use WPComplianceCL\Updates\GitHubReleaseProvider;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -23,6 +24,8 @@ final class Plugin {
 
 		// Self-heal schema changes on normal plugin load; activation alone is not enough for upgrades.
 		Migrations::maybe_run();
+
+		( new GitHubReleaseProvider() )->boot();
 
 		new Consent();
 		new Rights();

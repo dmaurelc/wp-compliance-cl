@@ -1,0 +1,65 @@
+name: Publish WP Compliance CL v0.1.2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-v0.1.2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.repository == 'dmaurelc/wp-compliance-cl'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v0.1.2
+      RELEASE_ZIP: wp-compliance-cl-0.1.2.zip
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+
+      - name: Validate release
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l
+          php tests/release-metadata.php
+          php tests/schema-contract.php
+          php tests/update-provider-contract.php
+
+      - name: Build and checksum installable ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/wp-compliance-cl
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.gitignore' \
+            --exclude='build' \
+            --exclude='tests' \
+            ./ build/wp-compliance-cl/
+          (
+            cd build
+            zip -rq "../${RELEASE_ZIP}" wp-compliance-cl
+          )
+          unzip -t "${RELEASE_ZIP}"
+          sha256sum "${RELEASE_ZIP}" > "${RELEASE_ZIP}.sha256"
+
+      - name: Create tag and GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${RELEASE_TAG}" "${RELEASE_ZIP}" "${RELEASE_ZIP}.sha256" \
+            --target "${GITHUB_SHA}" \
+            --title "WP Compliance CL v0.1.2" \
+            --notes "Updates & Distribution: actualizaciones nativas desde GitHub Releases, soporte público/privado y verificación SHA-256 antes de instalar."

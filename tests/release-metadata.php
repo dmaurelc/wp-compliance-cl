@@ -25,4 +25,9 @@ if ( false === strpos( $changelog, '## ' . $plugin_version ) ) {
 	exit( 1 );
 }
 
+if ( false === strpos( $main, 'Update URI:        https://github.com/dmaurelc/wp-compliance-cl' ) ) {
+	fwrite( STDERR, "Update URI header is missing or invalid.\n" );
+	exit( 1 );
+}
+
 echo "Release metadata OK: {$plugin_version}\n";

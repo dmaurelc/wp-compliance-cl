@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.2 — 2026-08-20
+
+### Updates & Distribution
+
+- Implementa `GitHubReleaseProvider` sobre el contrato desacoplado de actualizaciones.
+- Añade el encabezado estándar `Update URI` y la integración nativa con el panel de plugins de WordPress.
+- Consulta únicamente el último release estable de GitHub.
+- Exige assets versionados con ZIP y checksum SHA-256.
+- Verifica la integridad del paquete antes de entregarlo a `WP_Upgrader`.
+- Admite repositorios públicos sin credenciales y repositorios privados mediante `WPCCL_GITHUB_TOKEN`.
+- Mantiene las credenciales fuera del plugin y permite sobrescribir repositorio/token mediante filtros.
+- Añade pruebas estáticas del contrato de actualizaciones y del metadata de release.
+
 ## 0.1.1 — 2026-08-20
 
 ### Stability & Foundations
@@ -16,7 +29,7 @@
 - Las páginas nuevas generadas por WP Compliance CL se crean como borrador.
 - Los documentos incompletos muestran requisitos pendientes antes de publicación.
 - Elimina del frontend el mensaje técnico de revisión de tecnologías que pertenecía al administrador.
-- Prepara `UpdateProviderInterface` para updates desacoplados en v0.2.
+- Prepara `UpdateProviderInterface` para updates desacoplados.
 - Prepara `SecretStoreInterface` como frontera de seguridad del futuro módulo BYOK.
 - Conserva la atribución y licencia MIT del proyecto original `Lelemon-studio/compliance-cl`.
 
